@@ -6,6 +6,15 @@ fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap";
 document.head.appendChild(fontLink);
 
+// ─── Global mobile styles ─────────────────────────────────────────
+const globalStyle = document.createElement("style");
+globalStyle.textContent = `
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: #F7F6F2; overscroll-behavior-y: none; }
+  input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on focus */
+`;
+document.head.appendChild(globalStyle);
+
 // ─── Design Tokens ────────────────────────────────────────────────
 const T = {
   bg:        "#F7F6F2",
@@ -29,7 +38,7 @@ const T = {
 
 const DAILY_TARGETS = { calories: 2200, protein: 165, carbs: 200, fat: 70 };
 const TODAY_KEY = () => new Date().toISOString().slice(0, 10);
-const FONT_BODY = "'DM Sans', sans-serif";
+const FONT_BODY    = "'DM Sans', sans-serif";
 const FONT_DISPLAY = "'Bebas Neue', sans-serif";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -80,30 +89,25 @@ No markdown, no preamble.`
 }
 
 async function getRecommendation(remaining, targets, foods, loggedCount) {
-  const foodList = foods.map(f => `- ${f.name}: ${f.calories} cal, ${f.protein}g protein, ${f.carbs}g carbs, ${f.fat}g fat per ${f.servingSize}g serving`).join("\n");
+  const foodList = foods.map(f =>
+    `- ${f.name}: ${f.calories} cal, ${f.protein}g protein, ${f.carbs}g carbs, ${f.fat}g fat per ${f.servingSize}g serving`
+  ).join("\n");
   const text = await callClaude(
     [{ role: "user", content:
-      `The user has these macros remaining today:
-Calories: ${Math.round(remaining.calories)} remaining
-Protein: ${Math.round(remaining.protein)}g remaining
-Carbs: ${Math.round(remaining.carbs)}g remaining
-Fat: ${Math.round(remaining.fat)}g remaining
-Meals logged so far today: ${loggedCount}
+`Macros remaining today:
+Calories: ${Math.round(remaining.calories)}
+Protein: ${Math.round(remaining.protein)}g
+Carbs: ${Math.round(remaining.carbs)}g
+Fat: ${Math.round(remaining.fat)}g
+Meals logged: ${loggedCount}
 
-Their food catalog:
-${foodList}
-
-Recommend the best option from their catalog to help them hit their remaining goals. Be specific about how much to eat (in oz) and why.`
+Catalog:
+${foodList}`
     }],
-    `You are a nutrition coach. Analyze the remaining macro gaps and recommend a specific food from the catalog with an exact amount in oz.
+    `You are a nutrition coach. Recommend the single best food from the catalog to bridge the biggest macro gap without blowing the calorie budget.
 Return ONLY JSON:
-{
-  "food": "exact food name from catalog",
-  "oz": number,
-  "reason": "one punchy sentence explaining why this hits the gap",
-  "macrosHit": "e.g. +42g protein, 280 cal"
-}
-No markdown, no preamble. Pick the food that best bridges the biggest gap without blowing the calorie budget.`
+{"food":"exact name from catalog","oz":number,"reason":"one punchy sentence","macrosHit":"e.g. +42g protein, 280 cal"}
+No markdown, no preamble.`
   );
   return JSON.parse(text);
 }
@@ -121,33 +125,57 @@ function loadHistory() {
   catch { return {}; }
 }
 
-// ─── Components ───────────────────────────────────────────────────
+// ─── MacroBar — mobile-first two-row layout ───────────────────────
 function MacroBar({ label, current, target, accent, accentBg }) {
-  const pct = Math.min((current / target) * 100, 100);
-  const over = current > target;
-  const remaining = Math.round(target - current);
+  const pct     = Math.min((current / target) * 100, 100);
+  const over     = current > target;
+  const remaining = Math.round(Math.abs(target - current));
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: FONT_BODY }}>{label}</span>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: over ? T.red : T.text, fontFamily: FONT_BODY }}>{Math.round(current)}</span>
-          <span style={{ fontSize: 13, color: T.muted, fontFamily: FONT_BODY }}>/ {target}{label === "Calories" ? "" : "g"}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: over ? T.red : T.accentTxt, background: over ? T.redBg : accentBg, padding: "2px 8px", borderRadius: 99, fontFamily: FONT_BODY }}>
-            {over ? `+${Math.abs(remaining)} over` : `${remaining} left`}
-          </span>
-        </div>
+    <div style={{ marginBottom: 20 }}>
+      {/* Row 1: label + pill */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", color: T.muted, textTransform: "uppercase", fontFamily: FONT_BODY }}>
+          {label}
+        </span>
+        <span style={{
+          fontSize: 11, fontWeight: 700,
+          color: over ? T.red : T.accentTxt,
+          background: over ? T.redBg : accentBg,
+          padding: "2px 8px", borderRadius: 99, fontFamily: FONT_BODY,
+        }}>
+          {over ? `+${remaining} over` : `${remaining} left`}
+        </span>
       </div>
-      <div style={{ height: 6, background: T.border, borderRadius: 99, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: over ? T.red : accent, borderRadius: 99, transition: "width 0.5s cubic-bezier(0.4,0,0.2,1)" }} />
+      {/* Row 2: big number + target */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 8 }}>
+        <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", color: over ? T.red : T.text, lineHeight: 1, fontFamily: FONT_BODY }}>
+          {Math.round(current)}
+        </span>
+        <span style={{ fontSize: 13, color: T.faint, fontFamily: FONT_BODY }}>
+          / {target}{label === "Calories" ? "" : "g"}
+        </span>
+      </div>
+      {/* Row 3: progress bar */}
+      <div style={{ height: 7, background: T.border, borderRadius: 99, overflow: "hidden" }}>
+        <div style={{
+          height: "100%", width: `${pct}%`,
+          background: over ? T.red : accent,
+          borderRadius: 99,
+          transition: "width 0.5s cubic-bezier(0.4,0,0.2,1)",
+        }} />
       </div>
     </div>
   );
 }
 
+// ─── Shared primitives ────────────────────────────────────────────
 function Card({ children, style = {} }) {
   return (
-    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, boxShadow: T.shadow, marginBottom: 16, ...style }}>
+    <div style={{
+      background: T.surface, border: `1px solid ${T.border}`,
+      borderRadius: 14, padding: 20, boxShadow: T.shadow,
+      marginBottom: 12, ...style,
+    }}>
       {children}
     </div>
   );
@@ -169,19 +197,26 @@ function Btn({ children, onClick, variant = "primary", style: s = {}, disabled }
   };
   return (
     <button onClick={onClick} disabled={disabled} style={{
-      ...variants[variant], borderRadius: 8, fontFamily: FONT_BODY,
-      fontSize: 13, fontWeight: 700, padding: "10px 18px",
+      ...variants[variant],
+      borderRadius: 10, fontFamily: FONT_BODY,
+      fontSize: 15, fontWeight: 700,
+      padding: "13px 18px",           // taller touch target (44px+)
+      minHeight: 44,
       cursor: disabled ? "not-allowed" : "pointer",
-      opacity: disabled ? 0.6 : 1, transition: "opacity 0.15s", ...s,
+      opacity: disabled ? 0.6 : 1,
+      transition: "opacity 0.15s",
+      ...s,
     }}>{children}</button>
   );
 }
 
 function MacroChip({ label, value, color, bg }) {
   return (
-    <div style={{ background: bg, borderRadius: 8, padding: "8px 0", textAlign: "center", flex: 1 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color, textTransform: "uppercase", marginBottom: 2, fontFamily: FONT_BODY }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 700, color, letterSpacing: "-0.02em", fontFamily: FONT_BODY }}>{Math.round(value)}{label !== "Cal" ? "g" : ""}</div>
+    <div style={{ background: bg, borderRadius: 8, padding: "10px 0", textAlign: "center", flex: 1 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color, textTransform: "uppercase", marginBottom: 3, fontFamily: FONT_BODY }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color, letterSpacing: "-0.02em", fontFamily: FONT_BODY }}>
+        {Math.round(value)}{label !== "Cal" ? "g" : ""}
+      </div>
     </div>
   );
 }
@@ -196,26 +231,41 @@ function UploadZone({ onFile, loading }) {
       onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
       onDragLeave={() => setDrag(false)}
       onDrop={(e) => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files[0]); }}
-      style={{ border: `2px dashed ${drag ? T.accent : T.border}`, borderRadius: 10, padding: "24px 20px", textAlign: "center", cursor: "pointer", background: drag ? T.accentBg : T.bg, transition: "all 0.2s" }}
+      style={{
+        border: `2px dashed ${drag ? T.accent : T.border}`,
+        borderRadius: 12, padding: "28px 20px", textAlign: "center",
+        cursor: "pointer", background: drag ? T.accentBg : T.bg,
+        transition: "all 0.2s", minHeight: 44,
+      }}
     >
       <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handle(e.target.files[0])} />
       {loading
-        ? <div style={{ color: T.accent, fontSize: 13, fontWeight: 600, fontFamily: FONT_BODY }}>Scanning label…</div>
+        ? <div style={{ color: T.accent, fontSize: 15, fontWeight: 600, fontFamily: FONT_BODY }}>Scanning label…</div>
         : <>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 4, fontFamily: FONT_BODY }}>Drop a nutrition label image</div>
-            <div style={{ fontSize: 12, color: T.muted, fontFamily: FONT_BODY }}>or click to browse</div>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>📷</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 4, fontFamily: FONT_BODY }}>Drop a nutrition label image</div>
+            <div style={{ fontSize: 13, color: T.muted, fontFamily: FONT_BODY }}>or tap to browse</div>
           </>
       }
     </div>
   );
 }
 
+// inputs: font-size 16px enforced by global style to prevent iOS zoom
+const inputStyle = {
+  width: "100%",
+  background: T.bg, border: `1px solid ${T.border}`,
+  borderRadius: 10, padding: "13px 14px",
+  color: T.text, fontFamily: FONT_BODY,
+  outline: "none", appearance: "none",
+  minHeight: 44,
+};
+
 // ─── Recommendation Card ──────────────────────────────────────────
 function RecommendationCard({ totals, targets, foods, logCount }) {
-  const [rec, setRec] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [rec,       setRec]       = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
   const [dismissed, setDismissed] = useState(false);
 
   const remaining = {
@@ -225,13 +275,10 @@ function RecommendationCard({ totals, targets, foods, logCount }) {
     fat:      targets.fat      - totals.fat,
   };
 
-  // Only show if there's meaningful protein left to hit
-  const proteinLeft = remaining.protein;
   const allGoalsMet = Object.values(remaining).every(v => v <= 0);
-
   if (dismissed || allGoalsMet) return null;
 
-  const fetch = async () => {
+  const fetchRec = async () => {
     setLoading(true); setError(""); setRec(null);
     try { setRec(await getRecommendation(remaining, targets, foods, logCount)); }
     catch { setError("Couldn't generate a recommendation right now."); }
@@ -242,66 +289,65 @@ function RecommendationCard({ totals, targets, foods, logCount }) {
     <div style={{
       background: `linear-gradient(135deg, ${T.accentBg} 0%, #F0F8ED 100%)`,
       border: `1.5px solid ${T.accent}44`,
-      borderRadius: 12, padding: 18, marginBottom: 16,
+      borderRadius: 14, padding: 18, marginBottom: 12,
       boxShadow: T.shadow, position: "relative",
     }}>
-      {/* Dismiss */}
       <button onClick={() => setDismissed(true)} style={{
-        position: "absolute", top: 12, right: 12,
+        position: "absolute", top: 14, right: 14,
         background: "transparent", border: "none", color: T.faint,
-        cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 4,
+        cursor: "pointer", fontSize: 20, lineHeight: 1,
+        width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
       }}>×</button>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 18 }}>🎯</span>
-        <span style={{ fontFamily: FONT_DISPLAY, fontSize: 17, letterSpacing: "0.04em", color: T.accentTxt }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 20 }}>🎯</span>
+        <span style={{ fontFamily: FONT_DISPLAY, fontSize: 19, letterSpacing: "0.04em", color: T.accentTxt }}>
           What to eat next
         </span>
       </div>
 
-      {/* Remaining summary */}
+      {/* Remaining chips */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {[
-          { label: "Cal left",  value: Math.max(0, Math.round(remaining.calories)), color: T.yellow,    bg: T.yellowBg },
-          { label: "Pro left",  value: Math.max(0, Math.round(remaining.protein)),  color: T.accentTxt, bg: "#fff" },
-          { label: "Carb left", value: Math.max(0, Math.round(remaining.carbs)),    color: T.teal,      bg: T.tealBg },
-          { label: "Fat left",  value: Math.max(0, Math.round(remaining.fat)),      color: T.red,       bg: T.redBg },
+          { label: "Cal",  value: Math.max(0, Math.round(remaining.calories)), color: T.yellow,    bg: T.yellowBg },
+          { label: "Pro",  value: Math.max(0, Math.round(remaining.protein)),  color: T.accentTxt, bg: "#fff" },
+          { label: "Carb", value: Math.max(0, Math.round(remaining.carbs)),    color: T.teal,      bg: T.tealBg },
+          { label: "Fat",  value: Math.max(0, Math.round(remaining.fat)),      color: T.red,       bg: T.redBg },
         ].map(({ label, value, color, bg }) => (
-          <div key={label} style={{ flex: 1, background: bg, borderRadius: 8, padding: "6px 0", textAlign: "center" }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", color, textTransform: "uppercase", marginBottom: 2, fontFamily: FONT_BODY }}>{label}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color, fontFamily: FONT_BODY }}>{value}{label !== "Cal left" ? "g" : ""}</div>
+          <div key={label} style={{ flex: 1, background: bg, borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", color, textTransform: "uppercase", marginBottom: 2, fontFamily: FONT_BODY }}>{label} left</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color, fontFamily: FONT_BODY }}>{value}{label !== "Cal" ? "g" : ""}</div>
           </div>
         ))}
       </div>
 
-      {/* Recommendation result */}
       {rec && (
-        <div style={{ background: T.surface, borderRadius: 10, padding: "12px 14px", marginBottom: 12, border: `1px solid ${T.border}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: FONT_BODY }}>{rec.food}</div>
-            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, color: T.accent, letterSpacing: "0.04em", whiteSpace: "nowrap", marginLeft: 10 }}>{rec.oz} oz</div>
+        <div style={{ background: T.surface, borderRadius: 10, padding: "14px 16px", marginBottom: 12, border: `1px solid ${T.border}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: FONT_BODY, flex: 1, paddingRight: 12 }}>{rec.food}</div>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 20, color: T.accent, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{rec.oz} oz</div>
           </div>
-          <div style={{ fontSize: 12, color: T.muted, fontFamily: FONT_BODY, marginBottom: 6, lineHeight: 1.5 }}>{rec.reason}</div>
-          <div style={{ display: "inline-flex", background: T.accentBg, borderRadius: 6, padding: "3px 8px" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.accentTxt, fontFamily: FONT_BODY }}>{rec.macrosHit}</span>
+          <div style={{ fontSize: 13, color: T.muted, fontFamily: FONT_BODY, marginBottom: 8, lineHeight: 1.5 }}>{rec.reason}</div>
+          <div style={{ display: "inline-flex", background: T.accentBg, borderRadius: 6, padding: "4px 10px" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.accentTxt, fontFamily: FONT_BODY }}>{rec.macrosHit}</span>
           </div>
         </div>
       )}
 
-      {error && <div style={{ fontSize: 12, color: T.red, marginBottom: 10, fontFamily: FONT_BODY }}>{error}</div>}
+      {error && <div style={{ fontSize: 13, color: T.red, marginBottom: 10, fontFamily: FONT_BODY }}>{error}</div>}
 
-      <Btn onClick={fetch} disabled={loading} style={{ width: "100%" }}>
+      <Btn onClick={fetchRec} disabled={loading} style={{ width: "100%" }}>
         {loading ? "Analyzing your gaps…" : rec ? "Refresh recommendation" : "Get recommendation"}
       </Btn>
     </div>
   );
 }
 
-// ─── Calendar Component ───────────────────────────────────────────
+// ─── Calendar ─────────────────────────────────────────────────────
 function CalendarView({ targets }) {
-  const [history, setHistory] = useState({});
+  const [history,     setHistory]     = useState({});
   const [selectedDay, setSelectedDay] = useState(null);
-  const [viewMonth, setViewMonth] = useState(() => {
+  const [viewMonth,   setViewMonth]   = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
@@ -310,10 +356,10 @@ function CalendarView({ targets }) {
 
   const { year, month } = viewMonth;
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const dayNames = ["Su","Mo","Tu","We","Th","Fr","Sa"];
-  const firstDay = new Date(year, month, 1).getDay();
+  const dayNames   = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+  const firstDay   = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const todayStr = TODAY_KEY();
+  const todayStr   = TODAY_KEY();
 
   const prevMonth = () => setViewMonth(({ year: y, month: m }) => m === 0 ? { year: y-1, month: 11 } : { year: y, month: m-1 });
   const nextMonth = () => setViewMonth(({ year: y, month: m }) => m === 11 ? { year: y+1, month: 0 } : { year: y, month: m+1 });
@@ -322,11 +368,11 @@ function CalendarView({ targets }) {
   const getDayScore = (dayData) => {
     if (!dayData) return null;
     const tgt = dayData.targets || targets;
-    const proteinPct = Math.min(dayData.protein / tgt.protein, 1);
-    const calPct = dayData.calories / tgt.calories;
-    if (calPct > 1.1) return "over";
-    if (proteinPct >= 0.8) return "good";
-    if (proteinPct >= 0.5) return "partial";
+    const proteinPct = dayData.protein / tgt.protein;
+    const calPct     = dayData.calories / tgt.calories;
+    if (calPct > 1.1)       return "over";
+    if (proteinPct >= 0.8)  return "good";
+    if (proteinPct >= 0.5)  return "partial";
     return "low";
   };
 
@@ -345,59 +391,72 @@ function CalendarView({ targets }) {
 
   return (
     <div>
-      <Card style={{ padding: "16px 20px" }}>
+      <Card style={{ padding: "16px" }}>
+        {/* Month nav */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <button onClick={prevMonth} style={{ background: T.border, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+          <button onClick={prevMonth} style={{ background: T.border, border: "none", borderRadius: 10, width: 40, height: 40, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
           <span style={{ fontFamily: FONT_DISPLAY, fontSize: 22, letterSpacing: "0.04em", color: T.text }}>{monthNames[month]} {year}</span>
-          <button onClick={nextMonth} style={{ background: T.border, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+          <button onClick={nextMonth} style={{ background: T.border, border: "none", borderRadius: 10, width: 40, height: 40, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+
+        {/* Day headers */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 3 }}>
           {dayNames.map(d => (
-            <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: T.faint, letterSpacing: "0.06em", fontFamily: FONT_BODY, padding: "4px 0" }}>{d}</div>
+            <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: T.faint, letterSpacing: "0.04em", fontFamily: FONT_BODY, padding: "4px 0" }}>{d}</div>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+
+        {/* Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
           {cells.map((d, i) => {
             if (!d) return <div key={`e-${i}`} />;
-            const key = getDayKey(d);
-            const dayData = history[key];
-            const score = getDayScore(dayData);
-            const colors = score ? scoreColors[score] : null;
-            const isToday = key === todayStr;
-            const isSelected = selectedDay === d;
+            const key      = getDayKey(d);
+            const dayData  = history[key];
+            const score    = getDayScore(dayData);
+            const colors   = score ? scoreColors[score] : null;
+            const isToday  = key === todayStr;
+            const isSel    = selectedDay === d;
             return (
-              <button key={key} onClick={() => setSelectedDay(isSelected ? null : d)}
+              <button key={key} onClick={() => setSelectedDay(isSel ? null : d)}
                 style={{
-                  background: isSelected ? T.accent : colors ? colors.bg : "transparent",
+                  background: isSel ? T.accent : colors ? colors.bg : "transparent",
                   border: isToday ? `2px solid ${T.accent}` : "2px solid transparent",
-                  borderRadius: 8, padding: "6px 2px", cursor: dayData ? "pointer" : "default",
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3, transition: "all 0.15s",
+                  borderRadius: 10,
+                  minHeight: 44,           // proper touch target
+                  cursor: dayData ? "pointer" : "default",
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                  transition: "all 0.15s", padding: 0,
                 }}>
-                <span style={{ fontSize: 13, fontWeight: isToday ? 700 : 500, color: isSelected ? "#fff" : T.text, fontFamily: FONT_BODY }}>{d}</span>
-                {score && <div style={{ width: 5, height: 5, borderRadius: "50%", background: isSelected ? "rgba(255,255,255,0.8)" : colors.dot }} />}
+                <span style={{ fontSize: 14, fontWeight: isToday ? 700 : 500, color: isSel ? "#fff" : T.text, fontFamily: FONT_BODY }}>{d}</span>
+                {score && (
+                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: isSel ? "rgba(255,255,255,0.8)" : colors.dot }} />
+                )}
               </button>
             );
           })}
         </div>
-        <div style={{ display: "flex", gap: 12, marginTop: 14, justifyContent: "center" }}>
+
+        {/* Legend */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", marginTop: 16, justifyContent: "center" }}>
           {[["good","Hit protein"],["partial","Partial"],["over","Over calories"],["low","Low intake"]].map(([score, label]) => (
-            <div key={score} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: scoreColors[score].dot }} />
-              <span style={{ fontSize: 10, color: T.muted, fontFamily: FONT_BODY }}>{label}</span>
+            <div key={score} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: scoreColors[score].dot }} />
+              <span style={{ fontSize: 11, color: T.muted, fontFamily: FONT_BODY }}>{label}</span>
             </div>
           ))}
         </div>
       </Card>
 
+      {/* Selected day detail */}
       {selectedDay && (
         <Card>
           {selected ? (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                <span style={{ fontFamily: FONT_DISPLAY, fontSize: 20, color: T.text, letterSpacing: "0.04em" }}>{monthNames[month]} {selectedDay}</span>
-                <span style={{ fontSize: 11, color: T.muted, fontFamily: FONT_BODY }}>{year}</span>
+                <span style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: T.text, letterSpacing: "0.04em" }}>{monthNames[month]} {selectedDay}</span>
+                <span style={{ fontSize: 12, color: T.muted, fontFamily: FONT_BODY }}>{year}</span>
               </div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
                 <MacroChip label="Cal"  value={selected.calories} color={T.yellow}    bg={T.yellowBg} />
                 <MacroChip label="Pro"  value={selected.protein}  color={T.accentTxt} bg={T.accentBg} />
                 <MacroChip label="Carb" value={selected.carbs}    color={T.teal}      bg={T.tealBg} />
@@ -409,15 +468,17 @@ function CalendarView({ targets }) {
                 { label: "Carbs",    val: selected.carbs,    tgt: (selected.targets||targets).carbs,    accent: T.teal },
                 { label: "Fat",      val: selected.fat,      tgt: (selected.targets||targets).fat,      accent: T.red },
               ].map(({ label, val, tgt, accent }) => {
-                const pct = Math.min((val/tgt)*100, 100);
+                const pct  = Math.min((val / tgt) * 100, 100);
                 const over = val > tgt;
                 return (
-                  <div key={label} style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span style={{ fontSize: 12, color: T.muted, fontFamily: FONT_BODY }}>{label}</span>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: over ? T.red : T.text, fontFamily: FONT_BODY }}>{Math.round(val)} / {tgt}{label==="Calories"?"":"g"}</span>
+                  <div key={label} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                      <span style={{ fontSize: 13, color: T.muted, fontFamily: FONT_BODY }}>{label}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: over ? T.red : T.text, fontFamily: FONT_BODY }}>
+                        {Math.round(val)} / {tgt}{label === "Calories" ? "" : "g"}
+                      </span>
                     </div>
-                    <div style={{ height: 5, background: T.border, borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: 6, background: T.border, borderRadius: 99, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: over ? T.red : accent, borderRadius: 99 }} />
                     </div>
                   </div>
@@ -425,7 +486,7 @@ function CalendarView({ targets }) {
               })}
             </>
           ) : (
-            <div style={{ textAlign: "center", color: T.faint, fontSize: 13, padding: "16px 0", fontFamily: FONT_BODY }}>
+            <div style={{ textAlign: "center", color: T.faint, fontSize: 14, padding: "20px 0", fontFamily: FONT_BODY }}>
               No data logged for {monthNames[month]} {selectedDay}
             </div>
           )}
@@ -436,17 +497,9 @@ function CalendarView({ targets }) {
 }
 
 // ─── Main App ─────────────────────────────────────────────────────
-const inputStyle = {
-  width: "100%", boxSizing: "border-box",
-  background: T.bg, border: `1px solid ${T.border}`,
-  borderRadius: 8, padding: "10px 14px",
-  fontSize: 15, color: T.text, fontFamily: FONT_BODY,
-  outline: "none", appearance: "none",
-};
-
 export default function MacroTracker() {
-  const [targets, setTargets]           = useState(DAILY_TARGETS);
-  const [foods, setFoods]               = useState([
+  const [targets,          setTargets]          = useState(DAILY_TARGETS);
+  const [foods,            setFoods]            = useState([
     { id: 1, name: "Chicken Breast",      servingSize: 170, calories: 280, protein: 53, carbs: 0, fat: 6 },
     { id: 2, name: "93/7 Ground Turkey",  servingSize: 112, calories: 160, protein: 22, carbs: 0, fat: 7 },
     { id: 3, name: "Albacore Tuna (can)", servingSize: 198, calories: 220, protein: 40, carbs: 0, fat: 5 },
@@ -455,18 +508,18 @@ export default function MacroTracker() {
     { id: 6, name: "Eye of Round Steak",  servingSize: 170, calories: 240, protein: 44, carbs: 0, fat: 7 },
     { id: 7, name: "80/20 Ground Beef",   servingSize: 112, calories: 290, protein: 19, carbs: 0, fat: 23 },
   ]);
-  const [log, setLog]                   = useState([]);
-  const [view, setView]                 = useState("dashboard");
-  const [logForm, setLogForm]           = useState({ foodId: "", oz: "" });
-  const [scanning, setScanning]         = useState(false);
-  const [scanError, setScanError]       = useState("");
-  const [pendingFood, setPendingFood]   = useState(null);
-  const [editTargets, setEditTargets]   = useState(false);
-  const [tempTargets, setTempTargets]   = useState(targets);
-  const [mealDesc, setMealDesc]         = useState("");
-  const [estimating, setEstimating]     = useState(false);
-  const [estimateError, setEstimateError] = useState("");
-  const [pendingEstimate, setPendingEstimate] = useState(null);
+  const [log,              setLog]              = useState([]);
+  const [view,             setView]             = useState("dashboard");
+  const [logForm,          setLogForm]          = useState({ foodId: "", oz: "" });
+  const [scanning,         setScanning]         = useState(false);
+  const [scanError,        setScanError]        = useState("");
+  const [pendingFood,      setPendingFood]      = useState(null);
+  const [editTargets,      setEditTargets]      = useState(false);
+  const [tempTargets,      setTempTargets]      = useState(targets);
+  const [mealDesc,         setMealDesc]         = useState("");
+  const [estimating,       setEstimating]       = useState(false);
+  const [estimateError,    setEstimateError]    = useState("");
+  const [pendingEstimate,  setPendingEstimate]  = useState(null);
 
   const totals = log.reduce((acc, entry) => {
     if (entry.type === "estimate") {
@@ -509,27 +562,46 @@ export default function MacroTracker() {
   };
 
   const navTabs = [
-    { id: "dashboard", label: "Today" },
-    { id: "log",       label: "Log" },
+    { id: "dashboard", label: "Today"   },
+    { id: "log",       label: "Log"     },
     { id: "history",   label: "History" },
     { id: "catalog",   label: "Catalog" },
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: FONT_BODY, maxWidth: 480, margin: "0 auto" }}>
+    <div style={{
+      minHeight: "100dvh",
+      background: T.bg,
+      color: T.text,
+      fontFamily: FONT_BODY,
+      width: "100%",
+      paddingBottom: "env(safe-area-inset-bottom, 16px)",
 
-      {/* Header */}
-      <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "14px 20px 0", position: "sticky", top: 0, zIndex: 50, boxShadow: T.shadow }}>
+    }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        background: T.surface,
+        borderBottom: `1px solid ${T.border}`,
+        padding: "14px 20px 0",
+        position: "sticky", top: 0, zIndex: 50,
+        boxShadow: T.shadow,
+        paddingTop: "max(14px, env(safe-area-inset-top))", // respect notch
+      }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, letterSpacing: "0.06em", color: T.text, lineHeight: 1 }}>MAC</span>
-            <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, letterSpacing: "0.06em", color: T.accent, lineHeight: 1 }}>TRAX</span>
+            <span style={{ fontFamily: FONT_DISPLAY, fontSize: 32, letterSpacing: "0.06em", color: T.text, lineHeight: 1 }}>MAC</span>
+            <span style={{ fontFamily: FONT_DISPLAY, fontSize: 32, letterSpacing: "0.06em", color: T.accent, lineHeight: 1 }}>TRAX</span>
           </div>
-          <button onClick={() => { setEditTargets(true); setTempTargets(targets); }}
-            style={{ background: T.border, border: "none", color: T.text, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontFamily: FONT_BODY }}>
+          <button
+            onClick={() => { setEditTargets(true); setTempTargets(targets); }}
+            style={{ background: T.border, border: "none", color: T.text, fontSize: 13, fontWeight: 600, padding: "9px 16px", borderRadius: 10, cursor: "pointer", fontFamily: FONT_BODY, minHeight: 44 }}
+          >
             Targets
           </button>
         </div>
+
+        {/* Nav tabs */}
         <div style={{ display: "flex", marginBottom: -1 }}>
           {navTabs.map(({ id, label }) => (
             <button key={id} onClick={() => setView(id)} style={{
@@ -537,19 +609,21 @@ export default function MacroTracker() {
               borderBottom: `2px solid ${view === id ? T.accent : "transparent"}`,
               color: view === id ? T.accent : T.muted,
               fontFamily: FONT_BODY, fontSize: 13, fontWeight: view === id ? 700 : 500,
-              padding: "8px 0 10px", cursor: "pointer", transition: "all 0.15s",
+              padding: "10px 0 12px", cursor: "pointer", transition: "all 0.15s",
+              minHeight: 44,
             }}>{label}</button>
           ))}
         </div>
       </div>
 
-      <div style={{ padding: "20px 16px" }}>
+      {/* ── Page content ── */}
+      <div style={{ padding: "16px 14px" }}>
 
-        {/* Targets Modal */}
+        {/* Targets modal */}
         {editTargets && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: T.surface, borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, boxShadow: T.shadowMd }}>
-              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, letterSpacing: "0.04em", marginBottom: 20 }}>Daily Targets</div>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 env(safe-area-inset-bottom, 0)" }}>
+            <div style={{ background: T.surface, borderRadius: "20px 20px 0 0", padding: "24px 20px 32px", width: "100%", maxWidth: 480, boxShadow: T.shadowMd }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, letterSpacing: "0.04em", marginBottom: 20 }}>Daily Targets</div>
               {["calories","protein","carbs","fat"].map((k) => (
                 <div key={k} style={{ marginBottom: 16 }}>
                   <SectionLabel>{k}</SectionLabel>
@@ -558,7 +632,7 @@ export default function MacroTracker() {
                     style={inputStyle} />
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <Btn onClick={() => { setTargets(tempTargets); setEditTargets(false); }} style={{ flex: 1 }}>Save</Btn>
                 <Btn variant="ghost" onClick={() => setEditTargets(false)} style={{ flex: 1 }}>Cancel</Btn>
               </div>
@@ -575,16 +649,10 @@ export default function MacroTracker() {
             <MacroBar label="Fat"      current={totals.fat}      target={targets.fat}      accent={T.red}     accentBg={T.redBg} />
           </Card>
 
-          {/* Recommendation card — always visible on dashboard */}
-          <RecommendationCard
-            totals={totals}
-            targets={targets}
-            foods={foods}
-            logCount={log.length}
-          />
+          <RecommendationCard totals={totals} targets={targets} foods={foods} logCount={log.length} />
 
           {log.length === 0
-            ? <div style={{ textAlign: "center", color: T.faint, fontSize: 13, padding: "24px 0" }}>No meals logged today</div>
+            ? <div style={{ textAlign: "center", color: T.faint, fontSize: 14, padding: "32px 0", fontFamily: FONT_BODY }}>No meals logged today</div>
             : <>
                 <SectionLabel>Today's Meals</SectionLabel>
                 {log.map((entry) => {
@@ -600,17 +668,17 @@ export default function MacroTracker() {
                   return (
                     <Card key={entry.id} style={{ padding: "14px 16px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{name}</div>
+                        <div style={{ flex: 1, paddingRight: 12 }}>
+                          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 5 }}>{name}</div>
                           {entry.type === "estimate"
-                            ? <span style={{ fontSize: 11, background: T.yellowBg, color: T.yellow, padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>AI estimate · {entry.confidence} confidence</span>
-                            : <span style={{ fontSize: 12, color: T.muted }}>{entry.oz} oz</span>
+                            ? <span style={{ fontSize: 11, background: T.yellowBg, color: T.yellow, padding: "3px 8px", borderRadius: 4, fontWeight: 600, fontFamily: FONT_BODY }}>AI estimate · {entry.confidence} confidence</span>
+                            : <span style={{ fontSize: 13, color: T.muted, fontFamily: FONT_BODY }}>{entry.oz} oz</span>
                           }
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 11, color: T.faint }}>{entry.time}</span>
+                          <span style={{ fontSize: 11, color: T.faint, fontFamily: FONT_BODY }}>{entry.time}</span>
                           <button onClick={() => setLog((l) => l.filter((e) => e.id !== entry.id))}
-                            style={{ background: T.redBg, border: "none", color: T.red, width: 24, height: 24, borderRadius: 6, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                            style={{ background: T.redBg, border: "none", color: T.red, width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -619,7 +687,7 @@ export default function MacroTracker() {
                         <MacroChip label="Carb" value={carb} color={T.teal}      bg={T.tealBg} />
                         <MacroChip label="Fat"  value={fat}  color={T.red}       bg={T.redBg} />
                       </div>
-                      {entry.note && <div style={{ fontSize: 11, color: T.muted, marginTop: 8, fontStyle: "italic" }}>{entry.note}</div>}
+                      {entry.note && <div style={{ fontSize: 12, color: T.muted, marginTop: 8, fontStyle: "italic", fontFamily: FONT_BODY }}>{entry.note}</div>}
                     </Card>
                   );
                 })}
@@ -630,23 +698,23 @@ export default function MacroTracker() {
         {/* ── LOG ── */}
         {view === "log" && <>
           <Card>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Describe a meal</div>
-            <div style={{ fontSize: 12, color: T.muted, marginBottom: 14 }}>Don't want to weigh it? Describe what you ate and MACTRAX estimates the macros.</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, fontFamily: FONT_BODY }}>Describe a meal</div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 14, lineHeight: 1.5, fontFamily: FONT_BODY }}>Don't want to weigh it? Describe what you ate and MACTRAX estimates the macros.</div>
             <textarea value={mealDesc} onChange={(e) => setMealDesc(e.target.value)}
               placeholder="e.g. Two scrambled eggs, two strips of bacon, and sourdough toast with butter"
-              rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, fontSize: 14 }}
+              rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
             />
-            {estimateError && <div style={{ color: T.red, fontSize: 12, marginTop: 6 }}>{estimateError}</div>}
+            {estimateError && <div style={{ color: T.red, fontSize: 13, marginTop: 8, fontFamily: FONT_BODY }}>{estimateError}</div>}
             {pendingEstimate && (
-              <div style={{ background: T.accentBg, border: `1px solid ${T.accent}33`, borderRadius: 10, padding: 14, marginTop: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: T.accentTxt, marginBottom: 8 }}>{pendingEstimate.name}</div>
+              <div style={{ background: T.accentBg, border: `1px solid ${T.accent}33`, borderRadius: 12, padding: 16, marginTop: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.accentTxt, marginBottom: 10, fontFamily: FONT_BODY }}>{pendingEstimate.name}</div>
                 <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                   <MacroChip label="Cal"  value={pendingEstimate.calories} color={T.yellow}    bg={T.yellowBg} />
                   <MacroChip label="Pro"  value={pendingEstimate.protein}  color={T.accentTxt} bg="#fff" />
                   <MacroChip label="Carb" value={pendingEstimate.carbs}    color={T.teal}      bg={T.tealBg} />
                   <MacroChip label="Fat"  value={pendingEstimate.fat}      color={T.red}       bg={T.redBg} />
                 </div>
-                {pendingEstimate.note && <div style={{ fontSize: 11, color: T.muted, fontStyle: "italic", marginBottom: 10 }}>{pendingEstimate.note}</div>}
+                {pendingEstimate.note && <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic", marginBottom: 12, lineHeight: 1.5, fontFamily: FONT_BODY }}>{pendingEstimate.note}</div>}
                 <div style={{ display: "flex", gap: 8 }}>
                   <Btn onClick={confirmEstimate} style={{ flex: 1 }}>Log this meal</Btn>
                   <Btn variant="ghost" onClick={() => setPendingEstimate(null)} style={{ flex: 1 }}>Discard</Btn>
@@ -654,23 +722,23 @@ export default function MacroTracker() {
               </div>
             )}
             {!pendingEstimate && (
-              <Btn onClick={handleEstimate} disabled={estimating || !mealDesc.trim()} style={{ width: "100%", marginTop: 10 }}>
+              <Btn onClick={handleEstimate} disabled={estimating || !mealDesc.trim()} style={{ width: "100%", marginTop: 12 }}>
                 {estimating ? "Estimating…" : "Estimate Macros"}
               </Btn>
             )}
           </Card>
 
           <Card>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Log by weight</div>
-            <div style={{ fontSize: 12, color: T.muted, marginBottom: 14 }}>For catalog foods you weighed out.</div>
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, fontFamily: FONT_BODY }}>Log by weight</div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 16, lineHeight: 1.5, fontFamily: FONT_BODY }}>For catalog foods you weighed out.</div>
+            <div style={{ marginBottom: 14 }}>
               <SectionLabel>Food</SectionLabel>
               <select value={logForm.foodId} onChange={(e) => setLogForm((f) => ({ ...f, foodId: e.target.value }))} style={inputStyle}>
                 <option value="">Select a food…</option>
                 {foods.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 14 }}>
               <SectionLabel>Amount (oz)</SectionLabel>
               <input type="number" step="0.1" placeholder="e.g. 6" value={logForm.oz}
                 onChange={(e) => setLogForm((f) => ({ ...f, oz: e.target.value }))} style={inputStyle} />
@@ -680,7 +748,7 @@ export default function MacroTracker() {
               if (!food) return null;
               const ratio = (parseFloat(logForm.oz) * 28.3495) / food.servingSize;
               return (
-                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                   <MacroChip label="Cal"  value={food.calories*ratio} color={T.yellow}    bg={T.yellowBg} />
                   <MacroChip label="Pro"  value={food.protein*ratio}  color={T.accentTxt} bg={T.accentBg} />
                   <MacroChip label="Carb" value={food.carbs*ratio}    color={T.teal}      bg={T.tealBg} />
@@ -698,18 +766,19 @@ export default function MacroTracker() {
         {/* ── CATALOG ── */}
         {view === "catalog" && <>
           <Card>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Scan a nutrition label</div>
-            <div style={{ fontSize: 12, color: T.muted, marginBottom: 14 }}>Upload a photo and MACTRAX adds it to your catalog automatically.</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, fontFamily: FONT_BODY }}>Scan a nutrition label</div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 14, lineHeight: 1.5, fontFamily: FONT_BODY }}>Upload a photo and MACTRAX adds it to your catalog automatically.</div>
             <UploadZone onFile={handleScan} loading={scanning} />
-            {scanError && <div style={{ color: T.red, fontSize: 12, marginTop: 8 }}>{scanError}</div>}
+            {scanError && <div style={{ color: T.red, fontSize: 13, marginTop: 10, fontFamily: FONT_BODY }}>{scanError}</div>}
             {pendingFood && (
-              <div style={{ background: T.accentBg, border: `1px solid ${T.accent}33`, borderRadius: 10, padding: 14, marginTop: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: T.accentTxt, textTransform: "uppercase", marginBottom: 8 }}>Confirm to add</div>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{pendingFood.name}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 24px", fontSize: 13, marginBottom: 12 }}>
+              <div style={{ background: T.accentBg, border: `1px solid ${T.accent}33`, borderRadius: 12, padding: 16, marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: T.accentTxt, textTransform: "uppercase", marginBottom: 10, fontFamily: FONT_BODY }}>Confirm to add</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, fontFamily: FONT_BODY }}>{pendingFood.name}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 24px", marginBottom: 14 }}>
                   {[["Serving size",`${pendingFood.servingSize}g`],["Calories",pendingFood.calories],["Protein",`${pendingFood.protein}g`],["Carbs",`${pendingFood.carbs}g`],["Fat",`${pendingFood.fat}g`]].map(([k,v]) => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${T.border}` }}>
-                      <span style={{ color: T.muted }}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span>
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${T.border}` }}>
+                      <span style={{ color: T.muted, fontSize: 13, fontFamily: FONT_BODY }}>{k}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13, fontFamily: FONT_BODY }}>{v}</span>
                     </div>
                   ))}
                 </div>
@@ -725,8 +794,8 @@ export default function MacroTracker() {
           {foods.map((f) => (
             <Card key={f.id} style={{ padding: "14px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</span>
-                <span style={{ fontSize: 11, color: T.muted }}>per {f.servingSize}g</span>
+                <span style={{ fontSize: 15, fontWeight: 600, fontFamily: FONT_BODY }}>{f.name}</span>
+                <span style={{ fontSize: 12, color: T.muted, fontFamily: FONT_BODY }}>per {f.servingSize}g</span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <MacroChip label="Cal"  value={f.calories} color={T.yellow}    bg={T.yellowBg} />
