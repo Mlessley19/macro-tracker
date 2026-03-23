@@ -508,7 +508,12 @@ export default function MacroTracker() {
     { id: 6, name: "Eye of Round Steak",  servingSize: 170, calories: 240, protein: 44, carbs: 0, fat: 7 },
     { id: 7, name: "80/20 Ground Beef",   servingSize: 112, calories: 290, protein: 19, carbs: 0, fat: 23 },
   ]);
-  const [log,              setLog]              = useState([]);
+  const [log, setLog] = useState(() => {
+  try {
+    const saved = localStorage.getItem("mactrax_log_" + TODAY_KEY());
+    return saved ? JSON.parse(saved) : [];
+  } catch { return []; }
+});
   const [view,             setView]             = useState("dashboard");
   const [logForm,          setLogForm]          = useState({ foodId: "", oz: "" });
   const [scanning,         setScanning]         = useState(false);
@@ -531,9 +536,17 @@ export default function MacroTracker() {
     return { calories: acc.calories+food.calories*ratio, protein: acc.protein+food.protein*ratio, carbs: acc.carbs+food.carbs*ratio, fat: acc.fat+food.fat*ratio };
   }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
-  useEffect(() => {
-    if (log.length > 0) saveDayToStorage(TODAY_KEY(), totals, targets);
-  }, [log]);
+  // Save totals to history whenever log changes
+useEffect(() => {
+  if (log.length > 0) saveDayToStorage(TODAY_KEY(), totals, targets);
+}, [log]);
+
+// Save full meal log to localStorage
+useEffect(() => {
+  try {
+    localStorage.setItem("mactrax_log_" + TODAY_KEY(), JSON.stringify(log));
+  } catch {}
+}, [log]);
 
   const handleScan = async (file) => {
     setScanning(true); setScanError("");
