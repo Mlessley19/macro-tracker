@@ -499,15 +499,20 @@ function CalendarView({ targets }) {
 // ─── Main App ─────────────────────────────────────────────────────
 export default function MacroTracker() {
   const [targets,          setTargets]          = useState(DAILY_TARGETS);
-  const [foods,            setFoods]            = useState([
-    { id: 1, name: "Chicken Breast",      servingSize: 170, calories: 280, protein: 53, carbs: 0, fat: 6 },
-    { id: 2, name: "93/7 Ground Turkey",  servingSize: 112, calories: 160, protein: 22, carbs: 0, fat: 7 },
-    { id: 3, name: "Albacore Tuna (can)", servingSize: 198, calories: 220, protein: 40, carbs: 0, fat: 5 },
-    { id: 4, name: "Egg (large)",          servingSize: 50,  calories: 70,  protein: 6,  carbs: 0, fat: 5 },
-    { id: 5, name: "Pork Tenderloin",     servingSize: 170, calories: 260, protein: 48, carbs: 0, fat: 6 },
-    { id: 6, name: "Eye of Round Steak",  servingSize: 170, calories: 240, protein: 44, carbs: 0, fat: 7 },
-    { id: 7, name: "80/20 Ground Beef",   servingSize: 112, calories: 290, protein: 19, carbs: 0, fat: 23 },
-  ]);
+  const [foods, setFoods] = useState(() => {
+  try {
+    const saved = localStorage.getItem("mactrax_catalog");
+    return saved ? JSON.parse(saved) : [
+      { id: 1, name: "Chicken Breast",      servingSize: 170, calories: 280, protein: 53, carbs: 0, fat: 6 },
+      { id: 2, name: "93/7 Ground Turkey",  servingSize: 112, calories: 160, protein: 22, carbs: 0, fat: 7 },
+      { id: 3, name: "Albacore Tuna (can)", servingSize: 198, calories: 220, protein: 40, carbs: 0, fat: 5 },
+      { id: 4, name: "Egg (large)",          servingSize: 50,  calories: 70,  protein: 6,  carbs: 0, fat: 5 },
+      { id: 5, name: "Pork Tenderloin",     servingSize: 170, calories: 260, protein: 48, carbs: 0, fat: 6 },
+      { id: 6, name: "Eye of Round Steak",  servingSize: 170, calories: 240, protein: 44, carbs: 0, fat: 7 },
+      { id: 7, name: "80/20 Ground Beef",   servingSize: 112, calories: 290, protein: 19, carbs: 0, fat: 23 },
+    ];
+  } catch { return []; }
+});
   const [log, setLog] = useState(() => {
   try {
     const saved = localStorage.getItem("mactrax_log_" + TODAY_KEY());
@@ -547,6 +552,13 @@ useEffect(() => {
     localStorage.setItem("mactrax_log_" + TODAY_KEY(), JSON.stringify(log));
   } catch {}
 }, [log]);
+
+// Save catalog whenever it changes
+useEffect(() => {
+  try {
+    localStorage.setItem("mactrax_catalog", JSON.stringify(foods));
+  } catch {}
+}, [foods]);
 
   const handleScan = async (file) => {
     setScanning(true); setScanError("");
