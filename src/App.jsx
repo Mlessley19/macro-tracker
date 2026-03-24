@@ -498,7 +498,12 @@ function CalendarView({ targets }) {
 
 // ─── Main App ─────────────────────────────────────────────────────
 export default function MacroTracker() {
-  const [targets,          setTargets]          = useState(DAILY_TARGETS);
+  const [targets, setTargets] = useState(() => {
+  try {
+    const saved = localStorage.getItem("mactrax_targets");
+    return saved ? JSON.parse(saved) : DAILY_TARGETS;
+  } catch { return DAILY_TARGETS; }
+});
   const [foods, setFoods] = useState(() => {
   try {
     const saved = localStorage.getItem("mactrax_catalog");
@@ -559,6 +564,13 @@ useEffect(() => {
     localStorage.setItem("mactrax_catalog", JSON.stringify(foods));
   } catch {}
 }, [foods]);
+
+// Save targets whenever they change
+useEffect(() => {
+  try {
+    localStorage.setItem("mactrax_targets", JSON.stringify(targets));
+  } catch {}
+}, [targets]);
 
   const handleScan = async (file) => {
     setScanning(true); setScanError("");
